@@ -1,85 +1,24 @@
 from pathlib import Path
 
-from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtGui import *
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
+from PyQt5.QtCore import Qt, QSortFilterProxyModel, QModelIndex, QRegExp
+from PyQt5.QtWidgets import QApplication, QListView, QGridLayout, QSplitter, QMainWindow, QLineEdit, QLabel, \
+    QAbstractItemView, QFileDialog, QProgressBar, QWidget, QAction
+from PyQt5.QtGui import QStandardItem, QStandardItemModel, QFont
 
-
-class LyricsLoadThread(QThread):
-    loadStarted = pyqtSignal()
-    loadStatusChanged = pyqtSignal(int, name="loadStatusChanged")
-    itemsLoaded = pyqtSignal(dict, name="itemsLoaded")
-    loadFinished = pyqtSignal()
-
-    def __init__(self, dir=Path().cwd()):
-        super().__init__()
-        self._working_dir = dir
-
-    def set_working_dir(self, dir: Path):
-        self._working_dir = dir
-
-    def run(self):
-        self.loadStarted.emit()
-        self.loadStatusChanged.emit(0)
-
-        files = []
-        for file in self._working_dir.iterdir():
-            if file.is_file() and file.suffix == ".txt":
-                files.append(self._working_dir.joinpath(file))
-
-        files_cnt = len(files)
-        items = {}
-        for i, file in enumerate(files):
-            file_content = []
-            try:
-                with file.open(encoding="utf-8") as f:
-                    file_content = f.readlines()
-            except IOError as ex:
-                print(ex)
-            items[file] = file_content
-
-            progress = round((i / files_cnt) * 100)
-            self.loadStatusChanged.emit(progress)
-
-        self.itemsLoaded.emit(items)
-        self.loadFinished.emit()
-
-
-class HighlightTextEdit(QTextEdit):
-    def __init__(self):
-        super().__init__()
-
-        self.setFont(QFont("Yu Gothic"))
-        self.setReadOnly(True)
-        self.setFontPointSize(11)
-
-    def highlight_word(self, word: str, color: QColor = QColor(Qt.yellow)):
-        if word == "":
-            return
-
-        self.moveCursor(QTextCursor.Start, QTextCursor.MoveAnchor)
-        scan_results = []
-        while self.find(word):
-            result: QTextEdit.ExtraSelection = QTextEdit.ExtraSelection()
-            result.format.setBackground(color)
-
-            result.cursor = self.textCursor()
-            scan_results.append(result)
-
-        self.setExtraSelections(scan_results)
+from jvs.highlighttextedit import HighlightTextEdit
+from jvs.loadfilesthread import LoadFilesThread
 
 
 class ProxyContentModel(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-    def filterAcceptsRow(self, sourceRow: int, sourceParent: QModelIndex):
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex):
         regex: QRegExp = self.filterRegExp()
         if regex.pattern() == "":
             return True
 
-        index: QModelIndex = self.sourceModel().index(sourceRow, 0, sourceParent)
+        index: QModelIndex = self.sourceModel().index(source_row, 0, source_parent)
         item: QStandardItem = self.sourceModel().itemFromIndex(index)
         content_join: str = "".join(item.data())
 
@@ -112,7 +51,7 @@ class MainWindow(QMainWindow):
         self._files_view.setAlternatingRowColors(True)
 
         self._working_dir = Path().cwd()
-        self._load_thread = LyricsLoadThread(self._working_dir)
+        self._load_thread = LoadFilesThread(self._working_dir)
 
         self._model = QStandardItemModel()
         self._proxy_model = ProxyContentModel(self)
@@ -120,6 +59,9 @@ class MainWindow(QMainWindow):
         self._files_view.setModel(self._proxy_model)
 
         self._lyrics_edit = HighlightTextEdit()
+        self._lyrics_edit.setFont(QFont("Yu Gothic"))
+        self._lyrics_edit.setReadOnly(True)
+        self._lyrics_edit.setFontPointSize(11)
         splitter.addWidget(self._lyrics_edit)
 
         splitter.setStretchFactor(0, 0)
@@ -155,16 +97,16 @@ class MainWindow(QMainWindow):
 
     def _create_signals(self):
         self._files_view.selectionModel().currentChanged.connect(self._display_lyrics)
-        self._search.editingFinished.connect(self._update_view)
+        self._search.editingFinished.connect(self._filter_files)
 
-        self._load_thread.loadStarted.connect(self._progressbar.show)
-        self._load_thread.loadStatusChanged.connect(self._progressbar.setValue)
-        self._load_thread.itemsLoaded.connect(self._load_items)
-        self._load_thread.loadFinished.connect(self._progressbar.hide)
+        self._load_thread.started.connect(self._progressbar.show)
+        self._load_thread.statusChanged.connect(self._progressbar.setValue)
+        self._load_thread.loaded.connect(self._load_items)
+        self._load_thread.finished.connect(self._progressbar.hide)
 
     def _load_lyrics(self):
         self._model.clear()
-        self._load_thread.set_working_dir(self._working_dir)
+        self._load_thread.setWorkingDir(self._working_dir)
         self._load_thread.start()
 
     def _load_items(self, items: dict):
@@ -184,10 +126,12 @@ class MainWindow(QMainWindow):
 
         lyrics = "".join(item.data())
         self._lyrics_edit.setText(lyrics)
-        self._lyrics_edit.highlight_word(self._search.text())
+        self._lyrics_edit.highlight(self._get_search_regex())
 
-    def _update_view(self):
-        search_text = self._search.text()
-        reg_exp: QRegExp = QRegExp(search_text, Qt.CaseInsensitive)
-        self._proxy_model.setFilterRegExp(reg_exp)
-        self._lyrics_edit.highlight_word(search_text)
+    def _get_search_regex(self):
+        regex: QRegExp = QRegExp(self._search.text(), Qt.CaseInsensitive)
+        return regex
+
+    def _filter_files(self):
+        regex = self._get_search_regex()
+        self._proxy_model.setFilterRegExp(regex)
