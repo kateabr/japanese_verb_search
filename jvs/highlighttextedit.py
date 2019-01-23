@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, QRegExp
+from PyQt5.QtCore import Qt, QRegularExpression, QRegularExpressionMatchIterator, QRegularExpressionMatch
 from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat
 from PyQt5.QtWidgets import QTextEdit
 
@@ -7,19 +7,28 @@ class HighlightTextEdit(QTextEdit):
     def __init__(self):
         super().__init__()
 
-    def highlight(self, regex: QRegExp, color: QColor = QColor(Qt.yellow)):
-        if regex.isEmpty():
+    def highlight(self, regex: QRegularExpression, color: QColor = QColor(Qt.yellow)):
+        if regex.pattern() == "":
             return
 
         self.moveCursor(QTextCursor.Start)
         matches = []
-        while self.find(regex):
-            match: QTextEdit.ExtraSelection = QTextEdit.ExtraSelection()
-            fmt: QTextCharFormat = match.format
+        it: QRegularExpressionMatchIterator = regex.globalMatch(self.toPlainText())
+        while it.hasNext():
+            match: QRegularExpressionMatch = it.next()
+            if not match.hasMatch():
+                continue
+            begin = match.capturedStart()
+            end = match.capturedEnd()
+
+            matchSelection: QTextEdit.ExtraSelection = QTextEdit.ExtraSelection()
+            fmt: QTextCharFormat = matchSelection.format
             fmt.setBackground(color)
 
-            match.cursor = self.textCursor()
-            matches.append(match)
-        self.setExtraSelections(matches)
+            matchSelection.cursor = self.textCursor()
+            matchSelection.cursor.setPosition(begin, QTextCursor.MoveAnchor)
+            matchSelection.cursor.setPosition(end, QTextCursor.KeepAnchor)
+            matches.append(matchSelection)
 
+        self.setExtraSelections(matches)
         self.moveCursor(QTextCursor.Start)

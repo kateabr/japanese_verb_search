@@ -1,28 +1,13 @@
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QSortFilterProxyModel, QModelIndex, QRegExp
+from PyQt5.QtCore import QModelIndex, QRegularExpression, QVariant, Qt
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QApplication, QListView, QGridLayout, QSplitter, QMainWindow, QLineEdit, QLabel, \
     QAbstractItemView, QFileDialog, QProgressBar, QWidget, QAction
-from PyQt5.QtGui import QStandardItem, QStandardItemModel, QFont
 
 from jvs.highlighttextedit import HighlightTextEdit
 from jvs.loadfilesthread import LoadFilesThread
-
-
-class ProxyContentModel(QSortFilterProxyModel):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex):
-        regex: QRegExp = self.filterRegExp()
-        if regex.pattern() == "":
-            return True
-
-        index: QModelIndex = self.sourceModel().index(source_row, 0, source_parent)
-        item: QStandardItem = self.sourceModel().itemFromIndex(index)
-        content_join: str = "".join(item.data())
-
-        return regex.indexIn(content_join, 0) != -1
+from jvs.textfilemodel import TextFile, TextFilesModel, TextFilesProxyModel
 
 
 class MainWindow(QMainWindow):
@@ -31,11 +16,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Japanese verb search")
         self.setMinimumSize(800, 600)
 
-        self._create_ui()
-        self._create_menu()
-        self._create_signals()
+        self._createUi()
+        self._createMenu()
+        self._createSignals()
 
-    def _create_ui(self):
+    def _createUi(self):
         layout: QGridLayout = QGridLayout()
         layout.addWidget(QLabel("Search"), 0, 0)
 
@@ -53,8 +38,8 @@ class MainWindow(QMainWindow):
         self._working_dir = Path().cwd()
         self._load_thread = LoadFilesThread(self._working_dir)
 
-        self._model = QStandardItemModel()
-        self._proxy_model = ProxyContentModel(self)
+        self._model = TextFilesModel(self)
+        self._proxy_model = TextFilesProxyModel(self)
         self._proxy_model.setSourceModel(self._model)
         self._files_view.setModel(self._proxy_model)
 
@@ -78,12 +63,12 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
-    def _create_menu(self):
+    def _createMenu(self):
         menu = self.menuBar().addMenu("File")
-        menu.addAction(QAction("Open", self, triggered=self._open_dir))
+        menu.addAction(QAction("Open", self, triggered=self._openWorkingDir))
         menu.addAction(QAction("Exit", self, triggered=QApplication.exit))
 
-    def _open_dir(self):
+    def _openWorkingDir(self):
         _working_dir: str = QFileDialog.getExistingDirectory(
             self,
             "Open Directory",
@@ -93,45 +78,43 @@ class MainWindow(QMainWindow):
         if len(_working_dir) == 0:
             return
         self._working_dir = Path(_working_dir)
-        self._load_lyrics()
+        self._loadFiles()
 
-    def _create_signals(self):
-        self._files_view.selectionModel().currentChanged.connect(self._display_lyrics)
-        self._search.editingFinished.connect(self._filter_files)
+    def _createSignals(self):
+        self._files_view.selectionModel().currentChanged.connect(self._displayLyrics)
+        self._search.editingFinished.connect(self._filterFiles)
 
         self._load_thread.started.connect(self._progressbar.show)
         self._load_thread.statusChanged.connect(self._progressbar.setValue)
-        self._load_thread.loaded.connect(self._load_items)
+        self._load_thread.loaded.connect(self._updateFilesModel)
         self._load_thread.finished.connect(self._progressbar.hide)
 
-    def _load_lyrics(self):
+    def _loadFiles(self):
         self._model.clear()
         self._load_thread.setWorkingDir(self._working_dir)
         self._load_thread.start()
 
-    def _load_items(self, items: dict):
+    def _updateFilesModel(self, items: dict):
+        files = []
         for file, file_content in items.items():
-            item: QStandardItem = QStandardItem()
-            item.setData(file_content)
-            item.setText(file.name)
-            self._model.appendRow(item)
+            files.append(TextFile(file, file_content))
+        self._model.setFiles(files)
 
-    def _display_lyrics(self, ind: QModelIndex):
+    def _displayLyrics(self, ind: QModelIndex):
         if not ind.isValid():
             self._lyrics_edit.clear()
             return
 
         model_idx: QModelIndex = self._proxy_model.mapToSource(ind)
-        item: QStandardItem = self._model.itemFromIndex(model_idx)
+        item: QVariant = self._model.data(model_idx, Qt.UserRole).value()
 
-        lyrics = "".join(item.data())
+        lyrics = "".join(item.content)
         self._lyrics_edit.setText(lyrics)
-        self._lyrics_edit.highlight(self._get_search_regex())
+        self._lyrics_edit.highlight(self._searchRegex())
 
-    def _get_search_regex(self):
-        regex: QRegExp = QRegExp(self._search.text(), Qt.CaseInsensitive)
-        return regex
+    def _searchRegex(self) -> QRegularExpression:
+        return QRegularExpression(self._search.text(), QRegularExpression.CaseInsensitiveOption)
 
-    def _filter_files(self):
-        regex = self._get_search_regex()
-        self._proxy_model.setFilterRegExp(regex)
+    def _filterFiles(self):
+        regex = self._searchRegex()
+        self._proxy_model.setFilter(regex)
