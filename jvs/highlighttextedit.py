@@ -1,11 +1,11 @@
 from PyQt5.QtCore import Qt, QRegularExpression, QRegularExpressionMatchIterator, QRegularExpressionMatch
 from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat
-from PyQt5.QtWidgets import QTextEdit
+from PyQt5.QtWidgets import QTextEdit, QPlainTextEdit
 
 
-class HighlightTextEdit(QTextEdit):
-    def __init__(self):
-        super().__init__()
+class HighlightTextEdit(QPlainTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
     def highlight(self, regex: QRegularExpression, color: QColor = QColor(Qt.yellow)):
         if regex.pattern() == "":

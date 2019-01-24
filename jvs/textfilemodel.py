@@ -5,7 +5,7 @@ from PyQt5.QtCore import QRegularExpression, QAbstractListModel, QModelIndex, Qt
 
 
 class TextFile:
-    def __init__(self, path: Path, content: List[str]):
+    def __init__(self, path: Path, content: str):
         self._path = path
         self._content = content
 
@@ -14,7 +14,7 @@ class TextFile:
         return self._path
 
     @property
-    def content(self) -> List[str]:
+    def content(self) -> str:
         return self._content
 
     def contains(self, regex: QRegularExpression) -> bool:
@@ -23,7 +23,7 @@ class TextFile:
 
 class TextFilesModel(QAbstractListModel):
     def __init__(self, parent=None):
-        super().__init__()
+        super().__init__(parent)
 
         self._files = []
         self._filesLength = 0

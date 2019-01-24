@@ -1,120 +1,91 @@
 from pathlib import Path
+from typing import Dict
 
-from PyQt5.QtCore import QModelIndex, QRegularExpression, QVariant, Qt
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QApplication, QListView, QGridLayout, QSplitter, QMainWindow, QLineEdit, QLabel, \
-    QAbstractItemView, QFileDialog, QProgressBar, QWidget, QAction
+from PyQt5.QtCore import QModelIndex, QRegularExpression, Qt
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QShortcut
 
-from jvs.highlighttextedit import HighlightTextEdit
-from jvs.loadfilesthread import LoadFilesThread
-from jvs.textfilemodel import TextFile, TextFilesModel, TextFilesProxyModel
+from jvs import TextFile, TextFilesModel, TextFilesProxyModel
+from jvs.uic import Ui_MainWindow
+from jvs import LoadFilesThread
 
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Japanese verb search")
-        self.setMinimumSize(800, 600)
+        self.setupUi(self)
 
-        self._createUi()
-        self._createMenu()
-        self._createSignals()
+        self.workingDir = Path().cwd()
+        self.loadThread = LoadFilesThread(self.workingDir)
 
-    def _createUi(self):
-        layout: QGridLayout = QGridLayout()
-        layout.addWidget(QLabel("Search"), 0, 0)
+        self.model = TextFilesModel(self)
+        self.proxyModel = TextFilesProxyModel(self)
+        self.proxyModel.setSourceModel(self.model)
+        self.filesView.setModel(self.proxyModel)
 
-        self._search = QLineEdit()
-        layout.addWidget(self._search, 0, 1)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setCollapsible(0, False)
+        self.splitter.setCollapsible(1, False)
 
-        splitter = QSplitter()
-        layout.addWidget(splitter, 1, 0, 1, 2)
+        self.progressBar.hide()
 
-        self._files_view = QListView()
-        splitter.addWidget(self._files_view)
-        self._files_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._files_view.setAlternatingRowColors(True)
+        self.createShortcuts()
+        self.createSignals()
 
-        self._working_dir = Path().cwd()
-        self._load_thread = LoadFilesThread(self._working_dir)
+    def createShortcuts(self):
+        self.hkFocusOnSearch = QShortcut(QKeySequence(Qt.CTRL + Qt.Key_F), self, lambda: self.searchBox.setFocus())
 
-        self._model = TextFilesModel(self)
-        self._proxy_model = TextFilesProxyModel(self)
-        self._proxy_model.setSourceModel(self._model)
-        self._files_view.setModel(self._proxy_model)
+    def createSignals(self):
+        self.actionOpenDir.triggered.connect(self.openWorkingDir)
+        self.actionExit.triggered.connect(QApplication.exit)
 
-        self._lyrics_edit = HighlightTextEdit()
-        self._lyrics_edit.setFont(QFont("Yu Gothic"))
-        self._lyrics_edit.setReadOnly(True)
-        self._lyrics_edit.setFontPointSize(11)
-        splitter.addWidget(self._lyrics_edit)
+        self.filesView.selectionModel().currentChanged.connect(self.displayTextFile)
+        self.searchBox.editingFinished.connect(self.filterFiles)
 
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setCollapsible(0, False)
-        splitter.setCollapsible(1, False)
+        self.loadThread.started.connect(self.progressBar.show)
+        self.loadThread.statusChanged.connect(self.progressBar.setValue)
+        self.loadThread.loaded.connect(self.updateModel)
+        self.loadThread.finished.connect(self.progressBar.hide)
 
-        self._progressbar = QProgressBar()
-        layout.addWidget(self._progressbar, 2, 0, 1, 2)
-        self._progressbar.setRange(0, 100)
-        self._progressbar.hide()
-
-        central_widget = QWidget()
-        central_widget.setLayout(layout)
-        self.setCentralWidget(central_widget)
-
-    def _createMenu(self):
-        menu = self.menuBar().addMenu("File")
-        menu.addAction(QAction("Open", self, triggered=self._openWorkingDir))
-        menu.addAction(QAction("Exit", self, triggered=QApplication.exit))
-
-    def _openWorkingDir(self):
-        _working_dir: str = QFileDialog.getExistingDirectory(
+    def openWorkingDir(self):
+        workingDir: str = QFileDialog.getExistingDirectory(
             self,
             "Open Directory",
-            str(self._working_dir),
+            str(self.workingDir),
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
-        if len(_working_dir) == 0:
+        if len(workingDir) == 0:
             return
-        self._working_dir = Path(_working_dir)
-        self._loadFiles()
+        self.workingDir = Path(workingDir)
+        self.startLoadingThread()
 
-    def _createSignals(self):
-        self._files_view.selectionModel().currentChanged.connect(self._displayLyrics)
-        self._search.editingFinished.connect(self._filterFiles)
+    def startLoadingThread(self):
+        self.model.clear()
+        self.loadThread.setWorkingDir(self.workingDir)
+        self.loadThread.start()
 
-        self._load_thread.started.connect(self._progressbar.show)
-        self._load_thread.statusChanged.connect(self._progressbar.setValue)
-        self._load_thread.loaded.connect(self._updateFilesModel)
-        self._load_thread.finished.connect(self._progressbar.hide)
-
-    def _loadFiles(self):
-        self._model.clear()
-        self._load_thread.setWorkingDir(self._working_dir)
-        self._load_thread.start()
-
-    def _updateFilesModel(self, items: dict):
+    def updateModel(self, items: Dict[Path, str]):
         files = []
         for file, file_content in items.items():
             files.append(TextFile(file, file_content))
-        self._model.setFiles(files)
+        self.model.setFiles(files)
 
-    def _displayLyrics(self, ind: QModelIndex):
+    def displayTextFile(self, ind: QModelIndex):
         if not ind.isValid():
-            self._lyrics_edit.clear()
+            self.textView.clear()
             return
 
-        model_idx: QModelIndex = self._proxy_model.mapToSource(ind)
-        item: QVariant = self._model.data(model_idx, Qt.UserRole).value()
+        model_idx: QModelIndex = self.proxyModel.mapToSource(ind)
+        file: TextFile = self.model.data(model_idx, Qt.UserRole).value()
 
-        lyrics = "".join(item.content)
-        self._lyrics_edit.setText(lyrics)
-        self._lyrics_edit.highlight(self._searchRegex())
+        self.textView.setPlainText(file.content)
+        self.textView.highlight(self.searchBoxRegex())
 
-    def _searchRegex(self) -> QRegularExpression:
-        return QRegularExpression(self._search.text(), QRegularExpression.CaseInsensitiveOption)
+    def searchBoxRegex(self) -> QRegularExpression:
+        return QRegularExpression(self.searchBox.text(), QRegularExpression.CaseInsensitiveOption)
 
-    def _filterFiles(self):
-        regex = self._searchRegex()
-        self._proxy_model.setFilter(regex)
+    def filterFiles(self):
+        regex = self.searchBoxRegex()
+        self.proxyModel.setFilter(regex)
+        self.textView.highlight(self.searchBoxRegex())
