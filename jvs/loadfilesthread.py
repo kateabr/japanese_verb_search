@@ -1,12 +1,14 @@
 from pathlib import Path
-from typing import Dict
+from typing import List
 
 from PyQt5.QtCore import QThread, pyqtSignal
+
+from jvs import TextFile
 
 
 class LoadFilesThread(QThread):
     statusChanged = pyqtSignal(int)
-    loaded = pyqtSignal(dict)
+    loaded = pyqtSignal(list)
 
     def __init__(self, working_dir):
         super().__init__()
@@ -25,11 +27,11 @@ class LoadFilesThread(QThread):
                 files.append(self._workingDir.joinpath(file))
 
         files_cnt = len(files)
-        items: Dict[Path, str] = {}
+        items: List[TextFile] = []
         for i, file in enumerate(files):
             with file.open(encoding="utf-8") as f:
                 file_content = "".join(f.readlines())
-                items[file] = file_content
+                items.append(TextFile(file, file_content))
 
             prev = progress
             progress = round((i / files_cnt) * 100)
