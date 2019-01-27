@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 
 from PyQt5.QtCore import QModelIndex, QRegularExpression, Qt, QObject, QEvent
 from PyQt5.QtGui import QKeySequence
@@ -38,6 +39,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def createSignals(self):
         # action signals
         self.actionOpenDir.triggered.connect(self.openWorkingDir)
+        self.actionExport.triggered.connect(self.exportSearchResults)
         self.actionExit.triggered.connect(QApplication.exit)
 
         # update text view
@@ -67,6 +69,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.loadThread.started.connect(self.progressBar.show)
         self.loadThread.statusChanged.connect(self.progressBar.setValue)
         self.loadThread.finished.connect(self.progressBar.hide)
+
+    def exportSearchResults(self):
+        fileName, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Export Directory"),
+            str(self.workingDir),
+            self.tr("Text (*.txt)")
+        )
+
+        if len(fileName) == 0:
+            return
+
+        filePath: Path = Path(fileName)
+
+        files: List[TextFile] = self.proxyModel.filteredFiles()
+        found = [self.searchBoxRegex().pattern()]
+        for file in files:
+            for idx in file.occurenceLineList(self.searchBoxRegex()):
+                match = ""
+                if idx - 1 >= 0:
+                    match += file[idx - 1]
+                match += file[idx]
+                if idx + 1 < file.linesCount():
+                    match += file[idx + 1]
+
+                found.append(match)
+
+        filePath.touch(exist_ok=True)
+        filePath.write_text("\n\n".join(found), "utf-8", )
 
     def openWorkingDir(self):
         workingDir: str = QFileDialog.getExistingDirectory(

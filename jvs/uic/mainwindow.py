@@ -44,7 +44,7 @@ class Ui_MainWindow(object):
         self.layout.addWidget(self.progressBar, 2, 1, 1, 2)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 761, 21))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 761, 26))
         self.menubar.setObjectName("menubar")
         self.menuFile = QtWidgets.QMenu(self.menubar)
         self.menuFile.setObjectName("menuFile")
@@ -64,7 +64,10 @@ class Ui_MainWindow(object):
         self.actionRegExpSearch = QtWidgets.QAction(MainWindow)
         self.actionRegExpSearch.setCheckable(True)
         self.actionRegExpSearch.setObjectName("actionRegExpSearch")
+        self.actionExport = QtWidgets.QAction(MainWindow)
+        self.actionExport.setObjectName("actionExport")
         self.menuFile.addAction(self.actionOpenDir)
+        self.menuFile.addAction(self.actionExport)
         self.menuFile.addAction(self.actionExit)
         self.menuOptions.addAction(self.actionRealtimeSearch)
         self.menuOptions.addAction(self.actionRegExpSearch)
@@ -89,5 +92,7 @@ class Ui_MainWindow(object):
         self.actionExit.setShortcut(_translate("MainWindow", "Ctrl+Q"))
         self.actionRealtimeSearch.setText(_translate("MainWindow", "Search: Realtime"))
         self.actionRegExpSearch.setText(_translate("MainWindow", "Search: Use RexExp engine"))
+        self.actionExport.setText(_translate("MainWindow", "Export..."))
+        self.actionExport.setShortcut(_translate("MainWindow", "Ctrl+E"))
 
 from jvs.highlighttextedit import HighlightTextEdit

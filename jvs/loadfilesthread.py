@@ -30,7 +30,7 @@ class LoadFilesThread(QThread):
         items: List[TextFile] = []
         for i, file in enumerate(files):
             with file.open(encoding="utf-8") as f:
-                file_content = "".join(f.readlines())
+                file_content = f.readlines()
                 items.append(TextFile(file, file_content))
 
             prev = progress

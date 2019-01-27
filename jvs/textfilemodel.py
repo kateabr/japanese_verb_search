@@ -6,10 +6,11 @@ from PyQt5.QtCore import QRegularExpression, QAbstractListModel, QModelIndex, Qt
 
 
 class TextFile:
-    def __init__(self, path: Path, content: str):
+    def __init__(self, path: Path, content: List[str]):
         self._path = path
-        self._content = content
-        self._contentLower = content.lower()
+        self._contentList = content
+        self._content = "".join(content)
+        self._contentLower = self._content.lower()
 
     @property
     def path(self) -> Path:
@@ -25,6 +26,19 @@ class TextFile:
             return match.hasMatch()
         else:
             return regex.pattern().lower() in self._contentLower
+
+    def __getitem__(self, idx: int) -> str:
+        return self._contentList[idx]
+
+    def occurenceLineList(self, regex: QRegularExpression) -> List[int]:
+        res = []
+        for ind, line in enumerate(self._contentList):
+            if regex.match(line).hasMatch():
+                res.append(ind)
+        return res
+
+    def linesCount(self):
+        return len(self._contentList)
 
 
 class TextFilesModel(QAbstractListModel):
@@ -63,7 +77,6 @@ class TextFilesModel(QAbstractListModel):
             return QVariant(file.path.name)
         elif role == Qt.UserRole:
             return QVariant(file)
-
         return QVariant()
 
 
@@ -90,3 +103,11 @@ class TextFilesProxyModel(QSortFilterProxyModel):
         index: QModelIndex = self.sourceModel().index(sourceRow, 0, sourceParent)
         file: TextFile = self.sourceModel().data(index, Qt.UserRole).value()
         return file.contains(self._filter, self._useRegExp)
+
+    def filteredFiles(self) -> List[TextFile]:
+        files = []
+        for i in range(0, self.rowCount()):
+            index: QModelIndex = self.mapToSource(self.index(i, 0, QModelIndex()))
+            file: TextFile = self.sourceModel().data(index, Qt.UserRole).value()
+            files.append(file)
+        return files
